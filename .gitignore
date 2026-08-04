@@ -31,3 +31,46 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Maven build output
+target/
+
+# IntelliJ IDEA project files
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Eclipse project files (if you ever open it in Eclipse)
+.classpath
+.project
+.settings/
+
+# Compiled class files and binaries
+*.class
+*.log
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# JVM crash logs
+hs_err_pid*
+replay_pid*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Spring Boot local overrides (NEVER commit local secrets)
+application-local.properties
+application-local.yml
