@@ -72,5 +72,6 @@ ehthumbs.db
 Thumbs.db
 
 # Spring Boot local overrides (NEVER commit local secrets)
+**/application.properties
 application-local.properties
 application-local.yml
