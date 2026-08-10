@@ -15,7 +15,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 
 @Slf4j
-@Component
+//@Component
 @RequiredArgsConstructor
 public class ApiKeyAuthFilter extends OncePerRequestFilter {
 
@@ -27,6 +27,9 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
+
+        System.out.println(">>> FORENSIC CHECK: ApiKeyAuthFilter executed for URI: " + request.getRequestURI());
+
 
         // 1. Extract the raw key from the header
         String rawKey = request.getHeader(API_KEY_HEADER);
