@@ -1,5 +1,6 @@
 package com.gateway.apikey.service;
 
+import com.gateway.apikey.dto.ApiKeyMetadata;
 import com.gateway.apikey.dto.ApiKeyResponse;
 import com.gateway.apikey.entity.ApiKey;
 import com.gateway.apikey.repository.ApiKeyRepository;
@@ -18,6 +19,7 @@ public class ApiKeyService {
 
     private final ApiKeyRepository apiKeyRepository;
     private final KeyGenerator keyGenerator;
+    private final ApiKeyMetadataCache metadataCache;
     private final HashUtil hashUtil;
 
     /**
@@ -52,6 +54,36 @@ public class ApiKeyService {
         }
 
         String prefix = rawKey.substring(0, 12);
+
+        // 1. Check cache first
+        Optional<ApiKeyMetadata> cachedMetadata = metadataCache.get(prefix);
+
+        if (cachedMetadata.isPresent()) {
+            ApiKeyMetadata metadata = cachedMetadata.get();
+
+            if (metadata.isRevoked()) {
+                return Optional.empty();
+            }
+
+            // Verify hash against cached value (no DB query)
+            boolean isValid = hashUtil.verify(rawKey, metadata.getKeyHash());
+            if (!isValid) {
+                return Optional.empty();
+            }
+
+            // Reconstruct ApiKey entity from cached metadata
+            ApiKey apiKey = new ApiKey();
+            apiKey.setId(metadata.getId());
+            apiKey.setKeyPrefix(prefix);
+            apiKey.setKeyHash(metadata.getKeyHash());
+            apiKey.setTier(metadata.getTier());
+            apiKey.setScopes(metadata.getScopes());
+            apiKey.setRevoked(metadata.isRevoked());
+            return Optional.of(apiKey);
+        }
+
+        // 2. Cache miss - query DB
+
         Optional<ApiKey> optionalApiKey = apiKeyRepository.findByKeyPrefix(prefix);
 
         if (optionalApiKey.isEmpty()) {
@@ -65,7 +97,21 @@ public class ApiKeyService {
         }
 
         boolean isValid = hashUtil.verify(rawKey, apiKey.getKeyHash());
-        return isValid ? Optional.of(apiKey) : Optional.empty();
+        if (!isValid) {
+            return Optional.empty();
+        }
+
+        // 3. Populate cache for next request
+        ApiKeyMetadata metadata = new ApiKeyMetadata(
+                apiKey.getId(),
+                apiKey.getKeyHash(),
+                apiKey.getTier(),
+                apiKey.getScopes(),
+                apiKey.isRevoked()
+        );
+        metadataCache.put(prefix, metadata);
+
+        return Optional.of(apiKey);
     }
 
 
@@ -75,7 +121,8 @@ public class ApiKeyService {
         apiKey.setRevoked(true);
         apiKeyRepository.save(apiKey);
 
-        // TODO: Week 2 - Explicitly delete Redis cache entry here
+        // CRITICAL: Evict cache immediately. Without this, revoked key works for up to 60s
+        metadataCache.evict(apiKey.getKeyPrefix());
     }
 
     @Transactional(readOnly = true)
