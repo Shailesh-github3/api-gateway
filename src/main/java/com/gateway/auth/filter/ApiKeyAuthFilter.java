@@ -28,7 +28,7 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
 
-        System.out.println(">>> FORENSIC CHECK: ApiKeyAuthFilter executed for URI: " + request.getRequestURI());
+        //System.out.println(">>> FORENSIC CHECK: ApiKeyAuthFilter executed for URI: " + request.getRequestURI());
 
 
         // 1. Extract the raw key from the header
