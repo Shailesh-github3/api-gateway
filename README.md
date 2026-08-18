@@ -1,164 +1,173 @@
-# API Gateway Architecture & Request Flow
+# Multi-Tenant API Gateway
 
-## 1. High-Level Architecture Diagram
+A production-inspired API gateway implementing secure API-key authentication, distributed token-bucket rate limiting, and async usage analytics.
 
-```mermaid
-graph TD
-    Client[API Client] -->|HTTP Request| Gateway[Spring Boot Gateway]
+## Architecture
 
-    subgraph "Gateway Core Filters"
-        ApiKeyFilter[ApiKeyAuthFilter]
-        ScopeFilter[ScopeValidationFilter]
-        RateFilter[RateLimitFilter]
-    end
-
-    Gateway --> ApiKeyFilter
-    ApiKeyFilter --> ScopeFilter
-    ScopeFilter --> RateFilter
-
-    RateFilter -->|1. Check Bucket & Cache| Redis[(Redis RAM)]
-    ApiKeyFilter -->|2. Cache Miss Fallback| Postgres[(PostgreSQL DB)]
-
-    RateFilter -->|3. Forward Valid Request| Controller[Demo Resource Controller]
-    Controller -->|4. Fire & Forget Log| AsyncLogger["@Async Usage Logger"]
-    AsyncLogger -->|5. Write Event| Postgres
+```text
+Request
+  → ApiKeyAuthFilter (401)
+  → ScopeValidationFilter (403)
+  → RateLimitFilter (429)
+  → Controller
+  → Async Log
+  → PostgreSQL
 ```
 
----
+## Prerequisites
 
-## 2. Request Flow Sequence Diagram
+* [Docker Desktop](https://www.docker.com/products/docker-desktop/) v24.0+
+* Java 21 & Maven 3.9+ (optional, for local development outside Docker)
 
-```mermaid
-sequenceDiagram
-    autonumber
+## Quick Start
 
-    actor Client
-    participant Auth as ApiKeyAuthFilter
-    participant Rate as RateLimitFilter
-    participant Redis as Redis (Bucket4j)
-    participant App as Controller / API
-    participant Async as @Async Logger
-    participant DB as PostgreSQL
+Spin up the application, PostgreSQL, and Redis:
 
-    Client->>Auth: HTTP GET /v1/example\nHeader: X-API-KEY
-
-    Note over Auth: 1. Extract key prefix\n2. Lookup by prefix\n3. Verify SHA-256 using constant-time comparison
-
-    alt API key missing or invalid
-        Auth-->>Client: 401 Unauthorized
-    else API key valid
-        Auth->>Rate: Continue filter chain
-
-        Rate->>Redis: Execute Bucket4j Lua Script\nbucket:apiKeyId
-
-        alt Tokens available
-            Redis-->>Rate: Consume token
-            Rate->>App: Forward request
-            App-->>Client: 200 OK + RateLimit headers
-
-            App-)Async: Fire-and-forget usage event
-            Async->>DB: INSERT INTO usage_events
-
-        else Rate limit exceeded
-            Redis-->>Rate: No tokens remaining
-            Rate-->>Client: 429 Too Many Requests\nRetry-After
-        end
-    end
+```bash
+docker compose up --build -d
 ```
 
----
+Access the API at:
 
-## 3. Database Entity Relationship Diagram (ERD)
-
-```mermaid
-erDiagram
-    rate_limit_tiers ||--o{ api_keys : defines
-    api_keys ||--o{ usage_events : tracks
-    api_keys ||--o{ usage_daily_rollup : aggregates
-
-    api_keys {
-        bigint id PK
-        bigint owner_id
-        varchar key_prefix
-        varchar key_hash
-        varchar tier FK
-        string scopes
-        boolean revoked
-        timestamp created_at
-    }
-
-    rate_limit_tiers {
-        varchar tier PK
-        int requests_per_minute
-        int burst_capacity
-    }
-
-    usage_events {
-        bigint id PK
-        bigint api_key_id FK
-        varchar endpoint
-        varchar http_method
-        int status_code
-        bigint response_time_ms
-        timestamp created_at
-    }
-
-    usage_daily_rollup {
-        bigint id PK
-        bigint api_key_id FK
-        date day
-        bigint request_count
-        bigint error_count
-        bigint avg_latency_ms
-    }
+```text
+http://localhost:8080
 ```
 
----
+### Quick Verification
 
-## Database Notes
+Create your first API key:
 
-### `api_keys`
+```bash
+curl -u admin:admin -X POST http://localhost:8080/admin/api-keys \
+  -H "Content-Type: application/json" \
+  -d '{"ownerId":1,"tier":"STARTER","scopes":["read"]}'
+```
 
-| Column | Description |
-|---------|-------------|
-| `id` | Primary key |
-| `owner_id` | User who owns the API key |
-| `key_prefix` | Short searchable prefix used for fast lookup (indexed) |
-| `key_hash` | SHA-256 hash of the API key |
-| `tier` | Foreign key to `rate_limit_tiers` |
-| `scopes` | Allowed permissions (e.g. `read`, `write`) |
-| `revoked` | Whether the key is disabled |
-| `created_at` | Creation timestamp |
+The API key is returned only once, so store it securely.
 
-### `rate_limit_tiers`
+## API Endpoints
 
-| Column | Description |
-|---------|-------------|
-| `tier` | Tier name (`STARTER`, `PRO`, `ENTERPRISE`) |
-| `requests_per_minute` | Sustained rate limit |
-| `burst_capacity` | Maximum bucket capacity |
+| Endpoint               | Method | Auth                   | Description                           |
+| ---------------------- | ------ | ---------------------- | ------------------------------------- |
+| `/admin/api-keys`      | POST   | Basic (`admin:admin`)  | Create API key (returns raw key once) |
+| `/admin/api-keys/{id}` | DELETE | Basic (`admin:admin`)  | Revoke API key                        |
+| `/admin/api-keys`      | GET    | Basic (`admin:admin`)  | List all keys                         |
+| `/v1/example-resource` | GET    | API Key + `scope:read` | Protected demo endpoint               |
 
-### `usage_events`
+## Tech Stack
 
-Stores every API request for analytics and auditing.
+* **Spring Boot 4.1.0** — Core framework
+* **Spring Security** — Filter chain and basic authentication
+* **Bucket4j 8.19.0 + Redis** — Distributed rate limiting
+* **PostgreSQL 16** — Persistent storage
+* **Flyway** — Database schema migrations
+* **Testcontainers** — Integration testing
+* **k6** — Load testing
 
-| Column | Description |
-|---------|-------------|
-| `api_key_id` | API key used |
-| `endpoint` | Requested endpoint |
-| `http_method` | GET, POST, etc. |
-| `status_code` | HTTP response code |
-| `response_time_ms` | Processing latency |
-| `created_at` | Event timestamp |
+## Key Design Decisions
 
-### `usage_daily_rollup`
+### Security
 
-Stores aggregated daily usage statistics.
+* **SHA-256 Hashing (Not Encryption):** API keys are never recoverable. If the database is breached, stored hashes cannot be reversed to obtain the original keys.
+* **Constant-Time Comparison:** `MessageDigest.isEqual()` is used to reduce timing-attack risks when comparing hashes.
+* **Prefix-Indexed Lookup:** A key prefix is used for efficient database lookup before performing hash verification, avoiding full-table scans.
 
-| Column | Description |
-|---------|-------------|
-| `api_key_id` | API key |
-| `day` | Aggregation date |
-| `request_count` | Total requests |
-| `error_count` | Number of failed requests |
-| `avg_latency_ms` | Average response time |
+### Rate Limiting
+
+* **Token Bucket:** Token-bucket rate limiting avoids the boundary burst problem associated with fixed-window algorithms.
+* **Redis-Backed State:** Rate-limit state is stored in Redis so limits remain consistent across multiple application instances.
+* **Per-Tenant Isolation:** Each API key receives its own bucket using a key such as `bucket:{apiKeyId}`, preventing quota sharing between tenants.
+
+### Async Processing
+
+* **`@Async` with `CallerRunsPolicy`:** When the executor queue of 500 tasks is full and all worker threads are busy, the calling HTTP thread executes the logging task. This provides backpressure instead of dropping events or allowing the queue to grow without bounds.
+
+### Cache Invalidation
+
+* **60-Second TTL + Explicit Eviction on Revoke:** Cached API-key data expires after 60 seconds, while explicit eviction on revocation prevents a revoked key from remaining valid in the cache for the full TTL.
+
+## Testing
+
+### Integration Tests
+
+Integration tests use Testcontainers to provision the required infrastructure:
+
+```bash
+mvn test
+```
+
+### Load Tests
+
+Rate-limit verification:
+
+```bash
+k6 run load-tests/rate-limit-breach.js
+```
+
+Tenant-isolation verification:
+
+```bash
+k6 run load-tests/tenant-isolation.js
+```
+
+## Database Schema
+
+See:
+
+```text
+src/main/resources/db/migration/
+```
+
+for the complete database schema and Flyway migrations.
+
+Entity relationships are documented in:
+
+```text
+docs/er-diagram.md
+```
+
+## Performance
+
+* **<5 ms target overhead per request** for authentication and rate limiting under typical local conditions, including Redis interaction and hash comparison.
+* **Async logging** keeps logging work off the request thread during normal operation.
+
+> Performance figures depend on hardware, network latency, Redis configuration, database load, and deployment topology. Benchmark production environments before relying on specific latency targets.
+
+## Project Structure
+
+```text
+.
+├── src/
+│   ├── main/
+│   │   ├── java/
+│   │   └── resources/
+│   │       └── db/
+│   │           └── migration/
+│   └── test/
+├── docs/
+│   └── er-diagram.md
+├── load-tests/
+│   ├── rate-limit-breach.js
+│   └── tenant-isolation.js
+├── docker-compose.yml
+├── pom.xml
+└── README.md
+```
+
+## Stopping the Application
+
+```bash
+docker compose down
+```
+
+To also remove persistent Docker volumes:
+
+```bash
+docker compose down -v
+```
+
+> The `-v` option removes PostgreSQL and Redis volumes and therefore deletes persisted local data.
+
+## License
+
+MIT
