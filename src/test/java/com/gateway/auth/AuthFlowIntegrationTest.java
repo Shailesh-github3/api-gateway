@@ -96,10 +96,10 @@ class AuthFlowIntegrationTest {
 
     @Test
     void shouldReturn200WhenKeyIsValidAndHasScope() throws Exception {
-        // Note: This will return 404 because we haven't built the DemoResourceController yet.
-        // But it PROVES the request successfully passed BOTH the Auth and Scope filters.
+        // The DemoResourceController is now built, so it should return 200 OK.
+        // This PROVES the request successfully passed Auth, Scope, and Rate Limit filters.
         mockMvc.perform(get("/v1/example-resource")
                         .header("X-API-Key", validKeyWithScope))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isOk()); // Changed from isNotFound() to isOk()
     }
 }
