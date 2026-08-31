@@ -1,0 +1,113 @@
+Loading timing measurements from: timing_results_mock.csv
+
+[OK] Loaded 6400 timing measurements
+  Columns: ['method', 'byte_position', 'execution_time_ns']
+  Methods: ['String.equals()', 'MessageDigest.isEqual()']
+  Byte positions tested: [np.int64(0), np.int64(1), np.int64(2), np.int64(3), np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11), np.int64(12), np.int64(13), np.int64(14), np.int64(15), np.int64(16), np.int64(17), np.int64(18), np.int64(19), np.int64(20), np.int64(21), np.int64(22), np.int64(23), np.int64(24), np.int64(25), np.int64(26), np.int64(27), np.int64(28), np.int64(29), np.int64(30), np.int64(31)]
+
+
+String.equals():
+  Overall mean:   2823.8 ns
+  Overall median: 2824.0 ns
+  Overall std:    1384.1 ns
+
+  Per-byte-position statistics:
+  Position   Mean (ns)       Median (ns)     Std (ns)       
+  -------------------------------------------------------
+  0          511.3           516.0           54.3           
+  1          649.6           655.5           51.3           
+  2          811.0           813.0           47.0           
+  3          946.0           942.0           53.7           
+  4          1102.1          1101.5          45.0           
+  5          1243.2          1237.0          50.5           
+  6          1398.5          1401.0          49.2           
+  7          1544.0          1544.0          53.8           
+  8          1703.3          1700.0          47.7           
+  9          1852.0          1854.5          48.3           
+  10         1994.6          1992.0          47.1           
+  11         2145.7          2150.0          47.8           
+  12         2305.1          2308.5          55.0           
+  13         2447.7          2445.0          49.4           
+  14         2600.1          2601.5          45.9           
+  15         2747.9          2747.5          48.5           
+  16         2899.9          2899.0          56.5           
+  17         3060.5          3067.0          49.3           
+  18         3192.8          3189.5          46.7           
+  19         3344.2          3336.5          51.4           
+  20         3496.5          3499.5          48.5           
+  21         3647.2          3648.5          50.1           
+  22         3795.4          3789.5          53.9           
+  23         3954.9          3951.5          51.9           
+  24         4096.5          4103.5          46.6           
+  25         4239.5          4238.0          50.5           
+  26         4400.5          4401.5          45.9           
+  27         4548.8          4549.0          54.1           
+  28         4694.7          4695.5          49.3           
+  29         4845.1          4845.5          48.3           
+  30         4998.0          5002.5          56.4           
+  31         5144.7          5151.0          42.1           
+
+MessageDigest.isEqual():
+  Overall mean:   1999.4 ns
+  Overall median: 1999.0 ns
+  Overall std:    30.4 ns
+
+  Per-byte-position statistics:
+  Position   Mean (ns)       Median (ns)     Std (ns)       
+  -------------------------------------------------------
+  0          1993.4          1994.0          30.8           
+  1          2004.0          2004.0          33.8           
+  2          1998.7          1998.0          35.2           
+  3          2001.4          2005.0          28.3           
+  4          1994.2          1994.0          27.8           
+  5          1998.7          1999.0          29.4           
+  6          2006.0          2004.5          29.9           
+  7          1995.5          1998.0          30.4           
+  8          1996.8          1995.5          27.3           
+  9          1996.7          1996.0          30.8           
+  10         1996.7          1992.0          31.0           
+  11         1998.1          2000.5          30.8           
+  12         2002.5          2002.0          30.9           
+  13         1997.8          1998.5          29.7           
+  14         2002.2          2002.5          31.0           
+  15         2003.9          2004.5          32.2           
+  16         2001.0          1999.0          28.6           
+  17         2000.0          1997.5          31.3           
+  18         2002.5          2005.0          31.8           
+  19         1998.5          1999.5          30.6           
+  20         2004.3          2005.5          30.3           
+  21         1996.4          1997.0          29.3           
+  22         1999.2          2001.0          30.4           
+  23         2003.2          2001.5          34.6           
+  24         1998.4          2001.0          33.8           
+  25         1995.1          1996.5          30.3           
+  26         2002.4          2002.0          30.3           
+  27         1998.5          1999.5          29.8           
+  28         1997.8          1999.5          28.7           
+  29         2005.5          2006.0          26.9           
+  30         1998.1          2002.0          28.8           
+  31         1993.2          1993.5          25.5           
+
+
+================================================================================
+STATISTICAL HYPOTHESIS TEST: Early vs Late Mismatch Position Timing
+================================================================================
+
+H0: No significant timing difference between early and late byte mismatches
+H1: Significant timing difference between early and late byte mismatches
+Significance level: alpha = 0.05 (Welch's t-test, unequal variance)
+
+Method: String.equals()
+Traceback (most recent call last):
+  File "d:\SpringBoot\apigateway\api-gateway\analyze_rq2a.py", line 268, in <module>
+    main()
+    ~~~~^^
+  File "d:\SpringBoot\apigateway\api-gateway\analyze_rq2a.py", line 216, in main
+    test_results = run_statistical_tests(df)
+  File "d:\SpringBoot\apigateway\api-gateway\analyze_rq2a.py", line 107, in run_statistical_tests
+    print(f"  Early positions (byte_pos \u2264 {q25:.0f}): n={len(early_data)}")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2264' in position 28: character maps to <undefined>

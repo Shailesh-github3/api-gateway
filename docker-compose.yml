@@ -1,49 +1,77 @@
 services:
+
   app:
     build: .
     container_name: api-gateway-app
+
     ports:
       - "8080:8080"
+
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/gateway
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: root
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
+
+      SPRING_DATA_REDIS_HOST: toxiproxy
+      SPRING_DATA_REDIS_PORT: 26379
+
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
+      toxiproxy:
+        condition: service_started
+
     restart: unless-stopped
+
 
   postgres:
     image: postgres:16-alpine
     container_name: api-gateway-db
+
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: root
       POSTGRES_DB: gateway
+
     ports:
       - "5433:5432"
+
     volumes:
       - pgdata:/var/lib/postgresql/data
+
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gateway"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+
   redis:
     image: redis:7-alpine
     container_name: api-gateway-redis
-    ports:
-      - "6379:6379"
+
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.9.0
+    container_name: api-gateway-toxiproxy
+
+    ports:
+      - "8474:8474"
+      - "26379:26379"
+
+    depends_on:
+      redis:
+        condition: service_healthy
+
+    command:
+      - "-host=0.0.0.0"
+
 
 volumes:
   pgdata:
