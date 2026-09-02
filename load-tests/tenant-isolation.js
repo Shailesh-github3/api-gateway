@@ -2,23 +2,25 @@ import http from 'k6/http';
 import { check } from 'k6';
 
 export const options = {
-  vus: 2, // Two virtual users
-  iterations: 20, // 10 requests per user
+  vus: 2,
+  iterations: 20,
 };
 
-const KEY_A = 'sk_live_REDACTED'; // First tenant
-const KEY_B = 'sk_live_REDACTED_2'; // Second tenant
+const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
+const KEY_A = __ENV.KEY_A;
+const KEY_B = __ENV.KEY_B;
+
+if (!KEY_A || !KEY_B) {
+  throw new Error('KEY_A and KEY_B environment variables are required. Create two keys via POST /admin/api-keys first.');
+}
 
 export default function () {
-  // Each VU uses a different key
   const key = __VU === 1 ? KEY_A : KEY_B;
 
-  const res = http.get('http://localhost:8080/v1/example-resource', {
+  const res = http.get(`${BASE_URL}/v1/example-resource`, {
     headers: { 'X-API-Key': key },
   });
 
-  // Both tenants should get 200 for their first 10 requests
-  // (burst capacity is 10 per key, not shared)
   check(res, {
     'status is 200': (r) => r.status === 200,
   });

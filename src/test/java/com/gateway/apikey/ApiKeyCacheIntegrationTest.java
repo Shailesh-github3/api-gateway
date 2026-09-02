@@ -1,5 +1,6 @@
 package com.gateway.apikey;
 
+import com.gateway.BaseIntegrationTest;
 import com.gateway.apikey.dto.ApiKeyCreateRequest;
 import com.gateway.apikey.repository.ApiKeyRepository;
 import com.gateway.apikey.service.ApiKeyMetadataCache;
@@ -15,35 +16,12 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Testcontainers
 @AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class ApiKeyCacheIntegrationTest {
-
-    @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
-
-    @Container
-    static GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis:7-alpine")).withExposedPorts(6379);
-
-    @DynamicPropertySource
-    static void configureProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
-        registry.add("spring.data.redis.host", redis::getHost);
-        registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
-    }
+class ApiKeyCacheIntegrationTest extends BaseIntegrationTest {
 
     @LocalServerPort
     private int port;
@@ -60,12 +38,7 @@ class ApiKeyCacheIntegrationTest {
     @Test
     void revokeShouldImmediatelyEvictCache() {
 
-        // ---------------------------------------------------------
-        // 1. Create an API key via admin endpoint
-        // ---------------------------------------------------------
-
         ApiKeyCreateRequest createRequest = new ApiKeyCreateRequest();
-
         createRequest.setOwnerId(1L);
         createRequest.setTier("STARTER");
         createRequest.setScopes(new String[]{"read"});
@@ -79,17 +52,10 @@ class ApiKeyCacheIntegrationTest {
                 );
 
         assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-
         assertThat(createResponse.getBody()).isNotNull();
 
         String rawKey = extractKeyFromResponse(createResponse.getBody());
-
         assertThat(rawKey).isNotBlank();
-
-
-        // ---------------------------------------------------------
-        // 2. Use the API key once to populate the cache
-        // ---------------------------------------------------------
 
         HttpHeaders apiKeyHeaders = new HttpHeaders();
         apiKeyHeaders.set("X-API-Key", rawKey);
@@ -106,28 +72,11 @@ class ApiKeyCacheIntegrationTest {
 
         assertThat(authResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
-
-        // ---------------------------------------------------------
-        // 3. Verify that the cache entry exists
-        // ---------------------------------------------------------
-
         String prefix = rawKey.substring(0, 12);
-
         assertThat(metadataCache.get(prefix)).isPresent();
 
-
-        // ---------------------------------------------------------
-        // 4. Get the API key ID from the database
-        // ---------------------------------------------------------
-
         Long keyId = getKeyIdFromPrefix(prefix);
-
         assertThat(keyId).isNotNull();
-
-
-        // ---------------------------------------------------------
-        // 5. Revoke the API key
-        // ---------------------------------------------------------
 
         ResponseEntity<Void> revokeResponse =
                 restTemplate
@@ -141,18 +90,7 @@ class ApiKeyCacheIntegrationTest {
 
         assertThat(revokeResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
 
-
-        // ---------------------------------------------------------
-        // 6. CRITICAL:
-        //    Cache entry must be removed immediately
-        // ---------------------------------------------------------
-
         assertThat(metadataCache.get(prefix)).isEmpty();
-
-
-        // ---------------------------------------------------------
-        // 7. Verify that the revoked key is rejected
-        // ---------------------------------------------------------
 
         HttpHeaders revokedKeyHeaders = new HttpHeaders();
         revokedKeyHeaders.set("X-API-Key", rawKey);
@@ -170,17 +108,11 @@ class ApiKeyCacheIntegrationTest {
         assertThat(revokedResponse.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 
-
-    // -------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------
-
     private String url(String path) {
         return "http://localhost:" + port + path;
     }
 
     private String extractKeyFromResponse(String body) {
-        // Navigates directly to $.apiKey
         return JsonPath.read(body, "$.apiKey");
     }
 

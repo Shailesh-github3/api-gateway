@@ -12,14 +12,14 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: root
 
-      SPRING_DATA_REDIS_HOST: toxiproxy
-      SPRING_DATA_REDIS_PORT: 26379
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
 
     depends_on:
       postgres:
         condition: service_healthy
-      toxiproxy:
-        condition: service_started
+      redis:
+        condition: service_healthy
 
     restart: unless-stopped
 

@@ -8,8 +8,11 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.List;
 
 public interface UsageRollupRepository extends JpaRepository<UsageDailyRollup, Long> {
+
+    List<UsageDailyRollup> findByApiKeyIdOrderByDayDesc(Long apiKeyId);
 
     @Modifying
     @Transactional

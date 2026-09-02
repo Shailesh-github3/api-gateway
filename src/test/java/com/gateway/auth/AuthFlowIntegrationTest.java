@@ -1,5 +1,6 @@
 package com.gateway.auth;
 
+import com.gateway.BaseIntegrationTest;
 import com.gateway.apikey.entity.ApiKey;
 import com.gateway.apikey.repository.ApiKeyRepository;
 import com.gateway.common.util.HashUtil;
@@ -9,32 +10,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@Testcontainers
 @SpringBootTest
 @AutoConfigureMockMvc
-class AuthFlowIntegrationTest {
-
-    // 1. Start a real Postgres container for the test suite
-    @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
-
-    // 2. Dynamically inject the container's JDBC URL into Spring's properties
-    @DynamicPropertySource
-    static void configureProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
-    }
+class AuthFlowIntegrationTest extends BaseIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;

@@ -6,15 +6,14 @@ export const options = {
   duration: '30s',
 };
 
-// Replace with actual API key from admin endpoint
-const API_KEY = '__REPLACE_WITH_ACTUAL_KEY__';
+const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
+const API_KEY = __ENV.API_KEY;
 
-// Simulates hitting key-verification at different DB sizes.
-// Pass __ENV.KEY_COUNT to specify: 100, 10000, or 1000000
-const KEY_COUNT = __ENV.KEY_COUNT || '100';
+if (!API_KEY) {
+  throw new Error('API_KEY environment variable is required. Create a key via POST /admin/api-keys first.');
+}
 
 export default function () {
-  const url = `http://localhost:8080/v1/verify-key?keyCount=${KEY_COUNT}`;
   const params = {
     headers: {
       'X-API-Key': API_KEY,
@@ -22,7 +21,7 @@ export default function () {
     timeout: '5000ms',
   };
 
-  const res = http.get(url, params);
+  const res = http.get(`${BASE_URL}/v1/example-resource`, params);
 
   check(res, {
     'status is 200': (r) => r.status === 200,
