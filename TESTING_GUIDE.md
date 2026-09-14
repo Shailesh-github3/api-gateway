@@ -37,7 +37,7 @@ $body = @{
 $response = Invoke-RestMethod -Uri "http://localhost:8080/admin/api-keys" `
     -Method POST -Headers $headers -Body $body
 
-Write-Host "✓ API Key: $($response.raw_key)"
+Write-Host "✓ API Key: $($response.apiKey)"
 Write-Host "⚠ SAVE THIS KEY NOW - it cannot be retrieved again!"
 ```
 
@@ -54,15 +54,16 @@ Write-Host "⚠ SAVE THIS KEY NOW - it cannot be retrieved again!"
 
 ### Quick Start
 
-**Terminal 1** (Run k6 test):
+**Terminal 1** (Run k6 test). Pass the API key via `-e API_KEY=...`:
 ```powershell
-# Update script with your API key first
 $key = "sk_live_..."  # Your API key from admin endpoint
-(Get-Content load-tests/rq1-fault-injection.js) -replace "__REPLACE_WITH_ACTUAL_KEY__", $key | `
-    Set-Content load-tests/rq1-fault-injection.js
+
+# Route the app through Toxiproxy first (redis_proxy -> redis):
+#   $env:SPRING_DATA_REDIS_HOST="toxiproxy"; $env:SPRING_DATA_REDIS_PORT="26379"
+#   docker compose up -d --build app
 
 # Run the test
-k6 run --out json=rq1_results.json load-tests/rq1-fault-injection.js
+k6 run --out json=rq1_results.json -e "API_KEY=$key" load-tests/rq1-fault-injection.js
 ```
 
 **Terminal 2** (Inject fault after ~5 seconds):
@@ -125,87 +126,64 @@ python analyze_k6_results.py rq1_results.json rq1_analysis.png 5 15
 
 ### Quick Start
 
-**Step 1**: Compile timing harness
+Run the timing-analysis JUnit test:
 ```powershell
-javac -d target/test-classes src/test/java/com/gateway/timing/TimingAttackHarness.java
-```
-
-**Step 2**: Run harness (generates CSV)
-```powershell
-cd target/test-classes
-java com.gateway.timing.TimingAttackHarness 100 "../../timing_results.csv"
-cd ../..
-```
-
-**Step 3**: Analyze results
-```powershell
-python analyze_timing.py timing_results.csv
+mvn -Dtest=TimingAttackTest test
 ```
 
 ### Analysis Output
-- **timing_analysis.png**: Box plots comparing execution times
-  - **String.equals()**: High variance (vulnerable)
-  - **MessageDigest.isEqual()**: Low variance (constant-time)
-- **Console**: Welch's t-test results (early vs late byte position mismatches)
+- **Console**: JUnit results confirm `MessageDigest.isEqual` timing is independent of mismatch position.
+  - **String.equals()**: Early-exit → leaks byte position (vulnerable)
+  - **MessageDigest.isEqual()**: Constant-time (secure)
 
 ### Expected Results
-- **p-value < 0.05** for String.equals() = TIMING VULNERABILITY
-- **p-value >= 0.05** for MessageDigest.isEqual() = SAFE (constant-time)
+- `Tests run: 2, Failures: 0` = constant-time comparison confirmed.
 
 ### Files
-- `src/test/java/com/gateway/timing/TimingAttackHarness.java` - Timing measurement harness
-- `analyze_timing.py` - Statistical analysis and plotting
-- `scripts/rq2a-timing-analysis.ps1` - Automated PowerShell script
-
-### CSV Format
-```
-method,byte_position,execution_time_ns
-String.equals(),0,1234567
-String.equals(),0,1245678
-MessageDigest.isEqual(),0,2000000
-...
-```
+- `src/test/java/com/gateway/timing/TimingAttackTest.java` - JUnit timing-resistance test (replaced the old harness)
+- `scripts/rq2a-timing-analysis.ps1` - Automated PowerShell script (runs the JUnit test)
 
 ---
 
-## RQ2b: Verification Latency at Scale
+## RQ2b: Scale / Volume Testing
 
-**Research Question**: Does key verification latency scale linearly or sublinearly with DB size?
+**Research Question**: How does the gateway hold up under sustained request volume?
 
 **What It Tests**:
-- Verification at 100, 10K, and 1M stored keys
-- Measures p50, p95, p99 latencies
-- Compares O(1) prefix lookup vs O(N) naive scan
+- Request throughput and latency against `/v1/example-resource`
+- Measures p50, p95, p99 latencies (shown in the k6 console summary)
+- Exercises key verification, rate limiting, and async usage logging across many requests
 
 ### Quick Start
 
+Pass the API key and (optionally) a base URL via k6 env vars. The k6 script defaults to `http://localhost:8080`:
 ```powershell
-# For 100 keys
-k6 run --out json=rq2b_100_results.json -e KEY_COUNT=100 load-tests/rq2b-scale-test.js
+# Single volume run (30s default duration)
+k6 run -e "API_KEY=sk_live_..." -e "BASE_URL=http://localhost:8080" load-tests/rq2b-scale-test.js
+```
 
-# For 10,000 keys
-k6 run --out json=rq2b_10k_results.json -e KEY_COUNT=10000 load-tests/rq2b-scale-test.js
-
-# For 1,000,000 keys
-k6 run --out json=rq2b_1m_results.json -e KEY_COUNT=1000000 load-tests/rq2b-scale-test.js
+For reproducibility, run a few separate passes and merge the JSON output:
+```powershell
+k6 run --out json=rq2b_run1.json -e "API_KEY=sk_live_..." -e "BASE_URL=http://localhost:8080" load-tests/rq2b-scale-test.js
+k6 run --out json=rq2b_run2.json -e "API_KEY=sk_live_..." -e "BASE_URL=http://localhost:8080" load-tests/rq2b-scale-test.js
+k6 run --out json=rq2b_run3.json -e "API_KEY=sk_live_..." -e "BASE_URL=http://localhost:8080" load-tests/rq2b-scale-test.js
 ```
 
 ### Combined Analysis
 
 ```powershell
-# Merge all results
-Get-Content rq2b_100_results.json | Add-Content rq2b_scale_results.json
-Get-Content rq2b_10k_results.json | Add-Content rq2b_scale_results.json
-Get-Content rq2b_1m_results.json | Add-Content rq2b_scale_results.json
+# Merge all results (from the run1/run2/run3 files above)
+Get-Content rq2b_run1.json | Add-Content rq2b_scale_results.json
+Get-Content rq2b_run2.json | Add-Content rq2b_scale_results.json
+Get-Content rq2b_run3.json | Add-Content rq2b_scale_results.json
 
-# Generate Markdown comparison table
+# Generate Markdown comparison table (if the analyzer expects run labels, adjust accordingly)
 python analyze_scale_results.py rq2b_scale_results.json scale_analysis.md
 ```
 
 ### Analysis Output
 - **scale_analysis.md**: Markdown table with:
-  - p50, p95, p99 latencies for each (key_count, method) pair
-  - Scaling analysis showing latency growth ratio
+  - p50, p95, p99 latencies across runs
   - Interpretation and recommendations
 
 ### Example Output Table

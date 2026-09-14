@@ -27,7 +27,7 @@ $body = @{
 $response = Invoke-RestMethod -Uri "http://localhost:8080/admin/api-keys" `
     -Method POST -Headers $headers -Body $body
 
-Write-Host "API Key: $($response.raw_key)"
+Write-Host "API Key: $($response.apiKey)"
 Write-Host "⚠ SAVE THIS KEY NOW - never retrievable again!"
 ```
 
@@ -43,16 +43,16 @@ This runs everything in one command.
 
 ### Option B: Manual Steps
 
-**Terminal 1** - Run k6 test:
+**Terminal 1** - Run k6 test (pass the API key via `-e API_KEY=...`):
 ```powershell
 $key = "sk_live_..."  # Your API key
 
-# Update script
-(Get-Content load-tests/rq1-fault-injection.js) -replace "__REPLACE_WITH_ACTUAL_KEY__", $key | `
-    Set-Content load-tests/rq1-fault-injection.js
+# Route the app through Toxiproxy first (redis_proxy -> redis), then run test:
+#   $env:SPRING_DATA_REDIS_HOST="toxiproxy"; $env:SPRING_DATA_REDIS_PORT="26379"
+#   docker compose up -d --build app   (recreate app in RQ1 mode)
 
 # Run test (runs for 30 seconds)
-k6 run --out json=rq1_results.json load-tests/rq1-fault-injection.js
+k6 run --out json=rq1_results.json -e "API_KEY=$key" load-tests/rq1-fault-injection.js
 ```
 
 **Terminal 2** - Inject latency (while k6 is running):
@@ -97,19 +97,12 @@ powershell -File scripts/rq2a-timing-analysis.ps1
 ```
 
 ### Option B: Manual Steps
+The timing analysis now runs as a JUnit test (`TimingAttackTest`) instead of a
+standalone Java harness. It asserts that `MessageDigest.isEqual` (used by
+`HashUtil.verify`) is constant-time regardless of mismatch position.
 ```powershell
-# 1. Compile
-javac -d target/test-classes src/test/java/com/gateway/timing/TimingAttackHarness.java
-
-# 2. Run (generates timing_results.csv)
-cd target/test-classes
-java com.gateway.timing.TimingAttackHarness 100 "../../timing_results.csv"
-cd ../..
-
-# 3. Analyze
-python analyze_timing.py timing_results.csv
-
-# Output: timing_analysis.png + Welch's t-test results in console
+mvn test -Dtest=TimingAttackTest
+# Expect: Tests run: 2, Failures: 0
 ```
 
 ---
@@ -122,17 +115,14 @@ powershell -File scripts/rq2b-scale-test.ps1
 ```
 
 ### Option B: Manual Steps
+Targets `/v1/example-resource`. Pass the API key via `-e API_KEY=...`:
 ```powershell
 $key = "sk_live_..."  # Your API key
 
-# Update script
-(Get-Content load-tests/rq2b-scale-test.js) -replace "__REPLACE_WITH_ACTUAL_KEY__", $key | `
-    Set-Content load-tests/rq2b-scale-test.js
-
 # Run 3 tests (each 30 seconds) - choose one or all:
-k6 run --out json=rq2b_100_results.json -e KEY_COUNT=100 load-tests/rq2b-scale-test.js
-k6 run --out json=rq2b_10k_results.json -e KEY_COUNT=10000 load-tests/rq2b-scale-test.js
-k6 run --out json=rq2b_1m_results.json -e KEY_COUNT=1000000 load-tests/rq2b-scale-test.js
+k6 run --out json=rq2b_100_results.json -e "API_KEY=$key" load-tests/rq2b-scale-test.js
+k6 run --out json=rq2b_10k_results.json -e "API_KEY=$key" load-tests/rq2b-scale-test.js
+k6 run --out json=rq2b_1m_results.json -e "API_KEY=$key" load-tests/rq2b-scale-test.js
 
 # Combine results
 Get-Content rq2b_100_results.json | Add-Content rq2b_scale_results.json
@@ -215,7 +205,7 @@ Remove-Item rq1_results.json, rq1_analysis.png, timing_results.csv, timing_analy
 $key = "sk_live_..."  # From admin endpoint
 
 # 2. RQ1 - Run in background while you inject faults
-Start-Process powershell -ArgumentList "k6 run --out json=rq1_results.json -e KEY=$key load-tests/rq1-fault-injection.js"
+Start-Process powershell -ArgumentList "k6 run --out json=rq1_results.json -e API_KEY=$key load-tests/rq1-fault-injection.js"
 
 # 3. After ~5s, inject latency (in new terminal)
 Start-Sleep -Seconds 5
@@ -233,15 +223,13 @@ Invoke-RestMethod -Uri "http://localhost:8474/proxies/redis_proxy/toxics/slow_re
 # 4. When k6 completes, analyze RQ1
 python analyze_k6_results.py rq1_results.json rq1_analysis.png 5 15
 
-# 5. RQ2a - Timing analysis
-javac -d target/test-classes src/test/java/com/gateway/timing/TimingAttackHarness.java
-cd target/test-classes; java com.gateway.timing.TimingAttackHarness 100 "../../timing_results.csv"; cd ../..
-python analyze_timing.py timing_results.csv
+# 5. RQ2a - Timing analysis (runs as a JUnit test)
+mvn test -Dtest=TimingAttackTest
 
 # 6. RQ2b - Scale tests
-k6 run --out json=rq2b_100_results.json -e KEY_COUNT=100 load-tests/rq2b-scale-test.js
-k6 run --out json=rq2b_10k_results.json -e KEY_COUNT=10000 load-tests/rq2b-scale-test.js
-k6 run --out json=rq2b_1m_results.json -e KEY_COUNT=1000000 load-tests/rq2b-scale-test.js
+k6 run --out json=rq2b_100_results.json -e "API_KEY=$key" load-tests/rq2b-scale-test.js
+k6 run --out json=rq2b_10k_results.json -e "API_KEY=$key" load-tests/rq2b-scale-test.js
+k6 run --out json=rq2b_1m_results.json -e "API_KEY=$key" load-tests/rq2b-scale-test.js
 Get-Content rq2b_100_results.json, rq2b_10k_results.json, rq2b_1m_results.json | Add-Content rq2b_scale_results.json
 python analyze_scale_results.py rq2b_scale_results.json scale_analysis.md
 
@@ -279,8 +267,8 @@ Python Analyzers:
   analyze_timing.py
   analyze_scale_results.py
 
-Java Timing Harness:
-  src/test/java/com/gateway/timing/TimingAttackHarness.java
+Timing Test (JUnit):
+  src/test/java/com/gateway/timing/TimingAttackTest.java
 
 PowerShell Scripts:
   scripts/rq1-fault-injection.ps1

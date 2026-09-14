@@ -1,4 +1,4 @@
-# PowerShell Scripts for Fault Injection and Performance Testing
+﻿# PowerShell Scripts for Fault Injection and Performance Testing
 # RQ1: Traffic Control Under Redis Fault Injection
 
 # ============================================================================
@@ -28,27 +28,15 @@ $response = Invoke-RestMethod -Uri "http://localhost:8080/admin/api-keys" `
     -Headers $headers `
     -Body $body
 
-$API_KEY = $response.raw_key
+$API_KEY = $response.apiKey
 Write-Host "✓ API Key created: $API_KEY" -ForegroundColor Green
 Write-Host "⚠ SAVE THIS KEY NOW - it will never be shown again!" -ForegroundColor Yellow
-
-# ============================================================================
-# STEP 1: Update k6 script with actual API key
-# ============================================================================
-Write-Host "`n=== Updating k6 script with API key ===" -ForegroundColor Cyan
-
-$k6_file = "load-tests/rq1-fault-injection.js"
-$k6_content = Get-Content $k6_file -Raw
-$k6_content = $k6_content -replace "__REPLACE_WITH_ACTUAL_KEY__", $API_KEY
-Set-Content -Path $k6_file -Value $k6_content
-
-Write-Host "✓ Updated $k6_file with actual API key" -ForegroundColor Green
 
 # ============================================================================
 # STEP 2: Run k6 test with NDJSON export
 # ============================================================================
 Write-Host "`n=== STEP 2: Running k6 load test ===" -ForegroundColor Cyan
-Write-Host "Command: k6 run --out json=rq1_results.json load-tests/rq1-fault-injection.js" -ForegroundColor Yellow
+Write-Host "Command: k6 run --out json=rq1_results.json -e API_KEY=... load-tests/rq1-fault-injection.js" -ForegroundColor Yellow
 Write-Host "This will run for 30 seconds. Watch for this pattern:" -ForegroundColor Yellow
 Write-Host "  0-5s:   Baseline (healthy redis)" -ForegroundColor Gray
 Write-Host "  5-15s:  Fault window (5000ms latency injected)" -ForegroundColor Red
@@ -56,7 +44,7 @@ Write-Host "  15-30s: Recovery (latency removed)" -ForegroundColor Green
 Write-Host ""
 
 # Start k6 in the background
-$k6Process = Start-Process -FilePath "k6" -ArgumentList "run", "--out", "json=rq1_results.json", "load-tests/rq1-fault-injection.js" `
+$k6Process = Start-Process -FilePath "k6" -ArgumentList "run", "--out", "json=rq1_results.json", "-e", "API_KEY=$API_KEY", "load-tests/rq1-fault-injection.js" `
     -NoNewWindow -PassThru
 
 # Give k6 a moment to start

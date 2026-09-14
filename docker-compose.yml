@@ -12,14 +12,21 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: root
 
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
+      # RQ1 fault-injection: route the app through Toxiproxy instead of Redis directly.
+      # Override via environment, e.g.:
+      #   $env:SPRING_DATA_REDIS_HOST="toxiproxy"; $env:SPRING_DATA_REDIS_PORT="26379"
+      # (Toxiproxy auto-creates redis_proxy -> redis:6379 from proxy.json.)
+      # Default = app talks to Redis directly (healthy, no proxy).
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
 
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      toxiproxy:
+        condition: service_started
 
     restart: unless-stopped
 
@@ -65,12 +72,16 @@ services:
       - "8474:8474"
       - "26379:26379"
 
+    volumes:
+      - ./proxy.json:/etc/toxiproxy/proxy.json:ro
+
     depends_on:
       redis:
         condition: service_healthy
 
     command:
       - "-host=0.0.0.0"
+      - "-config=/etc/toxiproxy/proxy.json"
 
 
 volumes:
